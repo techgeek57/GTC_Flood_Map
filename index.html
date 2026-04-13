@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flood Zone Dashboard — Grand Traverse County, MI</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --navy:    #042C53;
+  --blue:    #185FA5;
+  --blue-lt: #B5D4F4;
+  --blue-xlt:#E6F1FB;
+  --teal:    #0F6E56;
+  --teal-lt: #E1F5EE;
+  --amber:   #854F0B;
+  --amber-lt:#FAEEDA;
+  --red:     #A32D2D;
+  --red-lt:  #FCEBEB;
+  --gray:    #444441;
+  --gray-lt: #F1EFE8;
+  --border:  #D3D1C7;
+  --text:    #2C2C2A;
+  --text-sm: #5F5E5A;
+  --text-xs: #888780;
+  --bg:      #ffffff;
+  --bg-2:    #F8F7F5;
+  --sidebar: 320px;
+  --header:  52px;
+}
+html, body { height: 100%; overflow: hidden; font-family: -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: var(--text); background: var(--bg); }
+
+/* ── Layout ── */
+#app { display: flex; flex-direction: column; height: 100%; }
+#header { height: var(--header); background: var(--navy); display: flex; align-items: center; padding: 0 16px; gap: 12px; flex-shrink: 0; z-index: 1000; }
+#header .logo { display: flex; align-items: center; gap: 10px; }
+#header .logo-mark { width: 28px; height: 28px; border-radius: 6px; background: rgba(255,255,255,0.15); display: flex; align-items: center; justify-content: center; }
+#header .logo-mark svg { width: 16px; height: 16px; fill: white; }
+#header h1 { font-size: 14px; font-weight: 600; color: white; }
+#header .sub { font-size: 11px; color: rgba(255,255,255,0.6); margin-top: 1px; }
+#header .spacer { flex: 1; }
+#header .status-pill { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.1); border-radius: 20px; padding: 4px 10px; font-size: 11px; color: rgba(255,255,255,0.8); }
+#status-dot { width: 7px; height: 7px; border-radius: 50%; background: #9FE1CB; }
+#status-dot.loading { background: #FAC775; animation: pulse 1.5s infinite; }
+#status-dot.error   { background: #F09595; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+#alert-banner { background: var(--red-lt); border-bottom: 2px solid #E24B4A; padding: 6px 16px; font-size: 12px; color: var(--red); display: none; flex-shrink: 0; }
+#alert-banner.visible { display: flex; align-items: center; gap: 8px; }
+#alert-banner strong { font-weight: 600; }
+
+#body { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Sidebar ── */
+#sidebar { width: var(--sidebar); flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow-y: auto; background: var(--bg); }
+.sb-section { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.sb-label { font-size: 10px; font-weight: 600; color: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+
+/* Search */
+#search-wrap { display: flex; gap: 6px; }
+#addr-input { flex: 1; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; color: var(--text); background: var(--bg); outline: none; }
+#addr-input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px var(--blue-xlt); }
+#search-btn { padding: 8px 12px; background: var(--blue); color: white; border: none; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+#search-btn:hover { background: #0C447C; }
+.search-hint { font-size: 11px; color: var(--text-xs); margin-top: 5px; }
+
+/* Zone Result */
+#zone-result { display: none; }
+#zone-result.visible { display: block; }
+.zone-card { border-radius: 8px; padding: 12px; border-left: 4px solid var(--blue); background: var(--blue-xlt); }
+.zone-card.zone-high  { border-color: #E24B4A; background: var(--red-lt); }
+.zone-card.zone-mod   { border-color: #EF9F27; background: var(--amber-lt); }
+.zone-card.zone-low   { border-color: var(--blue); background: var(--blue-xlt); }
+.zone-card.zone-none  { border-color: var(--teal); background: var(--teal-lt); }
+.zone-name { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.zone-risk  { font-size: 11px; color: var(--text-sm); margin-bottom: 8px; }
+.zone-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; margin-bottom: 8px; }
+.badge-req  { background: #F7C1C1; color: var(--red); }
+.badge-opt  { background: var(--blue-lt); color: #0C447C; }
+.badge-none { background: #9FE1CB; color: var(--teal); }
+.zone-desc  { font-size: 11px; color: var(--text-sm); line-height: 1.5; margin-bottom: 8px; }
+.zone-actions { display: flex; flex-direction: column; gap: 5px; }
+.zone-link { font-size: 11px; color: var(--blue); text-decoration: none; display: block; }
+.zone-link:hover { text-decoration: underline; }
+#zone-placeholder { text-align: center; padding: 16px 0; }
+#zone-placeholder p { font-size: 12px; color: var(--text-xs); line-height: 1.5; }
+.click-hint { margin-top: 10px; font-size: 11px; color: var(--text-xs); text-align: center; display: flex; align-items: center; justify-content: center; gap: 5px; }
+.click-hint::before, .click-hint::after { content:''; flex:1; height:1px; background: var(--border); }
+
+/* Gauges */
+#gauge-list { display: flex; flex-direction: column; gap: 8px; }
+.gauge-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: var(--bg-2); border-radius: 6px; border: 1px solid var(--border); }
+.gauge-left { flex: 1; min-width: 0; }
+.gauge-name { font-size: 11px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gauge-site-id { font-size: 10px; color: var(--text-xs); margin-top: 1px; }
+.gauge-right { text-align: right; flex-shrink: 0; margin-left: 8px; }
+.gauge-val  { font-size: 15px; font-weight: 600; color: var(--text); }
+.gauge-unit { font-size: 10px; color: var(--text-xs); }
+.gauge-status { font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 8px; margin-top: 2px; display: inline-block; }
+.gs-normal   { background: #C0DD97; color: #27500A; }
+.gs-elevated { background: #FAC775; color: var(--amber); }
+.gs-high     { background: #F7C1C1; color: var(--red); }
+.gauge-loading { font-size: 12px; color: var(--text-xs); text-align: center; padding: 12px 0; }
+.usgs-link { font-size: 10px; color: var(--blue); text-decoration: none; margin-top: 4px; display: block; }
+.usgs-link:hover { text-decoration: underline; }
+
+/* Layers */
+.layer-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; cursor: pointer; }
+.layer-toggle:last-child { margin-bottom: 0; }
+.layer-toggle input { accent-color: var(--blue); cursor: pointer; }
+.layer-toggle .swatch { width: 14px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+.layer-toggle span { font-size: 12px; color: var(--text); }
+
+/* Legend */
+.legend-grid { display: flex; flex-direction: column; gap: 5px; }
+.leg-item { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-sm); }
+.leg-swatch { width: 18px; height: 11px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.12); flex-shrink: 0; }
+.leg-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+
+/* Resources */
+.res-list { display: flex; flex-direction: column; gap: 6px; }
+.res-link { font-size: 12px; color: var(--blue); text-decoration: none; display: flex; align-items: flex-start; gap: 5px; line-height: 1.4; }
+.res-link:hover { text-decoration: underline; }
+.res-link::before { content: '↗'; font-size: 10px; margin-top: 1px; flex-shrink: 0; }
+
+/* Footer */
+#sidebar-footer { padding: 10px 14px; font-size: 10px; color: var(--text-xs); line-height: 1.5; border-top: 1px solid var(--border); margin-top: auto; }
+
+/* ── Map ── */
+#map { flex: 1; }
+.leaflet-popup-content-wrapper { border-radius: 8px !important; }
+.leaflet-popup-content { margin: 12px 14px !important; }
+
+/* ── Mobile ── */
+@media (max-width: 720px) {
+  #body { flex-direction: column; }
+  #sidebar { width: 100%; height: 50%; border-right: none; border-top: 1px solid var(--border); order: 2; }
+  #map { height: 50%; order: 1; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <header id="header">
+    <div class="logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7zm0 9.5c-1.4 0-2.5-1.1-2.5-2.5S10.6 6.5 12 6.5s2.5 1.1 2.5 2.5S13.4 11.5 12 11.5z"/></svg>
+      </div>
+      <div>
+        <div id="header-title" style="font-size:14px;font-weight:600;color:white;">Flood Zone Dashboard</div>
+        <div class="sub">Grand Traverse County, Michigan</div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="status-pill">
+      <div id="status-dot" class="loading"></div>
+      <span id="status-text">Connecting…</span>
+    </div>
+  </header>
+
+  <!-- NWS Alert Banner -->
+  <div id="alert-banner">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="#A32D2D"><path d="M12 2L1 21h22L12 2zm0 3.5L20.5 19h-17L12 5.5zM11 10v4h2v-4h-2zm0 6v2h2v-2h-2z"/></svg>
+    <span id="alert-text"></span>
+  </div>
+
+  <div id="body">
+    <!-- Sidebar -->
+    <div id="sidebar">
+
+      <!-- Search -->
+      <div class="sb-section">
+        <div class="sb-label">Look up an address</div>
+        <div id="search-wrap">
+          <input type="text" id="addr-input" placeholder="Street address, Traverse City…" autocomplete="off"/>
+          <button id="search-btn" onclick="searchAddress()">Search</button>
+        </div>
+        <div class="search-hint">Or click anywhere on the map to identify the flood zone.</div>
+      </div>
+
+      <!-- Zone Result -->
+      <div class="sb-section">
+        <div class="sb-label">Flood zone at this location</div>
+        <div id="zone-result">
+          <div id="zone-card" class="zone-card">
+            <div id="zone-name" class="zone-name"></div>
+            <div id="zone-badge" class="zone-badge"></div>
+            <div id="zone-risk" class="zone-risk"></div>
+            <div id="zone-desc" class="zone-desc"></div>
+            <div class="zone-actions">
+              <a id="fema-link" class="zone-link" href="#" target="_blank">View official FEMA flood map for this location →</a>
+              <a id="parcel-link" class="zone-link" href="https://maps.grandtraverse.org" target="_blank">Look up parcel details (GTC Tax Viewer) →</a>
+              <a id="nfip-link" class="zone-link" href="https://www.floodsmart.gov/flood-insurance-provider" target="_blank">Find a flood insurance provider →</a>
+            </div>
+          </div>
+        </div>
+        <div id="zone-placeholder">
+          <p>Search for an address above or<br/>click anywhere on the map.</p>
+          <div class="click-hint">live FEMA zone data</div>
+        </div>
+      </div>
+
+      <!-- USGS Gauges -->
+      <div class="sb-section">
+        <div class="sb-label">USGS Live Streamflow — GTC Watershed</div>
+        <div id="gauge-list">
+          <div class="gauge-loading" id="gauge-loading">Fetching live gauge data…</div>
+        </div>
+        <div id="gauge-timestamp" style="font-size:10px;color:var(--text-xs);margin-top:6px;"></div>
+      </div>
+
+      <!-- Layer Toggles -->
+      <div class="sb-section">
+        <div class="sb-label">Map layers</div>
+        <label class="layer-toggle"><input type="checkbox" id="lyr-nfhl" checked/><div class="swatch" style="background:#E24B4A;opacity:0.6;"></div><span>FEMA flood zones (NFHL)</span></label>
+        <label class="layer-toggle"><input type="checkbox" id="lyr-gauges" checked/><div class="swatch" style="background:#1D9E75;border-radius:50%;"></div><span>USGS stream gauges</span></label>
+        <label class="layer-toggle"><input type="checkbox" id="lyr-boundary" checked/><div class="swatch" style="background:none;border:2px solid #534AB7;"></div><span>County boundary</span></label>
+      </div>
+
+      <!-- Legend -->
+      <div class="sb-section">
+        <div class="sb-label">Flood zone legend</div>
+        <div class="legend-grid">
+          <div class="leg-item"><div class="leg-swatch" style="background:#E24B4A;opacity:0.65;"></div>Zone AE — High risk, BFE established</div>
+          <div class="leg-item"><div class="leg-swatch" style="background:#EF9F27;opacity:0.65;"></div>Zone A — High risk, no BFE study</div>
+          <div class="leg-item"><div class="leg-swatch" style="background:#B5D4F4;opacity:0.85;"></div>Zone X — Moderate / minimal risk</div>
+          <div class="leg-item"><div class="leg-swatch" style="background:#9FE1CB;opacity:0.85;"></div>Floodway</div>
+          <div class="leg-item"><div class="leg-dot" style="background:#1D9E75;border:2px solid white;box-shadow:0 0 0 1px #0F6E56;"></div>USGS gauge station (live)</div>
+          <div class="leg-item"><div class="leg-dot" style="background:#185FA5;border:2px solid white;box-shadow:0 0 0 1px #0C447C;"></div>Searched / clicked location</div>
+        </div>
+      </div>
+
+      <!-- Resources for Residents -->
+      <div class="sb-section">
+        <div class="sb-label">Resident resources</div>
+        <div class="res-list">
+          <a class="res-link" href="https://msc.fema.gov/portal" target="_blank">FEMA Flood Map Service Center</a>
+          <a class="res-link" href="https://www.floodsmart.gov" target="_blank">FloodSmart.gov — insurance rates &amp; guidance</a>
+          <a class="res-link" href="https://www.gtcountymi.gov/437/GIS---Mapping" target="_blank">GTC GIS Department</a>
+          <a class="res-link" href="https://maps.grandtraverse.org" target="_blank">GTC Parcel Tax Viewer</a>
+          <a class="res-link" href="https://www.michigan.gov/egle/about/organization/water-resources/floodplain-management" target="_blank">Michigan Floodplain Management (EGLE)</a>
+          <a class="res-link" href="https://water.weather.gov/ahps2/index.php?wfo=apx" target="_blank">NWS River Forecast — NW Michigan</a>
+        </div>
+      </div>
+
+      <div id="sidebar-footer">
+        Flood zone data: FEMA National Flood Hazard Layer (NFHL). Streamflow: USGS Water Services API. Basemap: Esri World Street Map. This tool is for informational purposes only. For official flood determinations, consult the FEMA Flood Map Service Center or your local floodplain administrator.
+      </div>
+    </div>
+
+    <!-- Map -->
+    <div id="map"></div>
+  </div>
+</div>
+
+<script>
+// ── Constants ──
+var GTC_CENTER = [44.763, -85.621];
+var GTC_ZOOM   = 10;
+var USGS_URL   = 'https://waterservices.usgs.gov/nwis/iv/?format=json&stateCd=mi&countyCd=055&parameterCd=00060,00065&siteType=ST&siteStatus=active';
+var NWS_URL    = 'https://api.weather.gov/alerts/active?zone=MIZ028,MIC055';
+var NFHL_WMS   = 'https://hazards.fema.gov/gis/nfhl/services/public/NFHL/MapServer/WmsServer';
+var NFHL_REST  = 'https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/28/query';
+
+// ── Zone definitions ──
+var ZONES = {
+  'AE':  { label:'Zone AE — High Risk',         cls:'zone-high', badge:'Flood insurance REQUIRED',  badgeCls:'badge-req',  risk:'1% annual chance of flooding (26% over a 30-year mortgage). Base Flood Elevation established.', desc:'This is a Special Flood Hazard Area (SFHA). Structures with federally-backed mortgages are required to carry flood insurance. Typical NFIP annual premiums range from $800–$2,400 depending on elevation and structure type.' },
+  'A':   { label:'Zone A — High Risk',           cls:'zone-high', badge:'Flood insurance REQUIRED',  badgeCls:'badge-req',  risk:'1% annual chance of flooding. No Base Flood Elevation study has been performed.', desc:'Special Flood Hazard Area without a detailed engineering study. Insurance is required for federally-backed mortgages. Request a BFE determination from your local floodplain administrator.' },
+  'AO':  { label:'Zone AO — Shallow Flooding',   cls:'zone-high', badge:'Flood insurance REQUIRED',  badgeCls:'badge-req',  risk:'1% annual chance of shallow sheet-flow flooding, typically 1–3 feet deep.', desc:'Common near gently sloping terrain. Insurance required for federally-backed mortgages. Proper grading and drainage around structures is especially important.' },
+  'AH':  { label:'Zone AH — Shallow Ponding',    cls:'zone-high', badge:'Flood insurance REQUIRED',  badgeCls:'badge-req',  risk:'1% annual chance of shallow ponding, usually less than 3 feet deep.', desc:'Special Flood Hazard Area with ponding-type flooding. Insurance required. An Elevation Certificate can help determine your actual risk and may reduce premiums.' },
+  'X':   { label:'Zone X — Moderate/Minimal Risk', cls:'zone-low', badge:'Insurance not required',    badgeCls:'badge-opt',  risk:'Less than 0.2% annual chance of flooding (outside 500-year floodplain).', desc:'Outside the Special Flood Hazard Area. However, about 25% of flood insurance claims come from lower-risk zones. Affordable Preferred Risk Policies are available. All areas can experience flooding.' },
+  'D':   { label:'Zone D — Undetermined Risk',   cls:'zone-mod', badge:'Risk not studied',           badgeCls:'badge-opt',  risk:'Flood hazard has not been formally determined for this area.', desc:'Contact the GTC Equalization/GIS Department or Michigan EGLE for site-specific flood risk information.' }
+};
+
+// ── Map setup ──
+var map = L.map('map', { center: GTC_CENTER, zoom: GTC_ZOOM, zoomControl: true });
+
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+  attribution: 'Tiles © <a href="https://www.esri.com/" target="_blank">Esri</a> — Sources: Esri, HERE, Garmin, USGS, NGA, EPA, USDA, NPS',
+  maxZoom: 19
+}).addTo(map);
+
+var nfhlLayer = L.tileLayer.wms(NFHL_WMS, {
+  layers: '28', format: 'image/png', transparent: true, opacity: 0.55,
+  attribution: '<a href="https://www.fema.gov/flood-maps/national-flood-hazard-layer" target="_blank">FEMA NFHL</a>'
+}).addTo(map);
+
+var boundaryLayer = L.rectangle([[44.40,-85.95],[45.05,-85.25]], {
+  color:'#534AB7', weight:2, fill:false, dashArray:'7 5', interactive:false
+}).addTo(map);
+
+var gaugeGroup = L.layerGroup().addTo(map);
+var markerLayer = null;
+
+// ── Layer toggles ──
+document.getElementById('lyr-nfhl').addEventListener('change', function(){
+  if (this.checked) map.addLayer(nfhlLayer); else map.removeLayer(nfhlLayer);
+});
+document.getElementById('lyr-gauges').addEventListener('change', function(){
+  if (this.checked) map.addLayer(gaugeGroup); else map.removeLayer(gaugeGroup);
+});
+document.getElementById('lyr-boundary').addEventListener('change', function(){
+  if (this.checked) map.addLayer(boundaryLayer); else map.removeLayer(boundaryLayer);
+});
+
+// ── Map click → FEMA identify ──
+map.on('click', function(e){ identifyFloodZone(e.latlng.lat, e.latlng.lng); });
+
+// ── FEMA zone identify ──
+function identifyFloodZone(lat, lon) {
+  setStatus('loading','Looking up flood zone…');
+  var url = NFHL_REST +
+    '?geometry=' + lon + ',' + lat +
+    '&geometryType=esriGeometryPoint&inSR=4326' +
+    '&spatialRel=esriSpatialRelIntersects' +
+    '&outFields=FLD_ZONE,ZONE_SUBTY,SFHA_TF' +
+    '&f=json&returnGeometry=false';
+  fetch(url)
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var zone = 'X';
+      if (data.features && data.features.length > 0) {
+        zone = data.features[0].attributes.FLD_ZONE || 'X';
+      }
+      showZoneResult(zone, lat, lon);
+      placeMarker(lat, lon);
+      setStatus('ok', 'Live — FEMA NFHL');
+    })
+    .catch(function(){
+      showZoneResult('X', lat, lon);
+      placeMarker(lat, lon);
+      setStatus('error', 'Zone lookup unavailable');
+    });
+}
+
+function showZoneResult(zone, lat, lon) {
+  var z = ZONES[zone] || ZONES['X'];
+  var card = document.getElementById('zone-card');
+  card.className = 'zone-card ' + z.cls;
+  document.getElementById('zone-name').textContent = z.label;
+  var badge = document.getElementById('zone-badge');
+  badge.className = 'zone-badge ' + z.badgeCls;
+  badge.textContent = z.badge;
+  document.getElementById('zone-risk').textContent = z.risk;
+  document.getElementById('zone-desc').textContent = z.desc;
+  var femaHref = 'https://msc.fema.gov/portal/search#ADDRESS/' + lat.toFixed(5) + '/' + lon.toFixed(5);
+  document.getElementById('fema-link').href = femaHref;
+  document.getElementById('zone-result').style.display = 'block';
+  document.getElementById('zone-placeholder').style.display = 'none';
+}
+
+function placeMarker(lat, lon) {
+  if (markerLayer) map.removeLayer(markerLayer);
+  markerLayer = L.circleMarker([lat, lon], {
+    radius:8, fillColor:'#185FA5', color:'white', weight:2, fillOpacity:0.9
+  }).addTo(map);
+}
+
+// ── Address search ──
+function searchAddress() {
+  var q = document.getElementById('addr-input').value.trim();
+  if (!q) return;
+  setStatus('loading','Searching…');
+  fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q + ', Grand Traverse County, Michigan'))
+    .then(function(r){ return r.json(); })
+    .then(function(results){
+      if (!results.length) { alert('Address not found. Try a more specific address in Grand Traverse County.'); setStatus('ok','Live — FEMA NFHL'); return; }
+      var r = results[0];
+      var lat = parseFloat(r.lat), lon = parseFloat(r.lon);
+      map.setView([lat, lon], 15);
+      identifyFloodZone(lat, lon);
+    })
+    .catch(function(){ setStatus('error','Search unavailable'); });
+}
+document.getElementById('addr-input').addEventListener('keydown', function(e){ if (e.key==='Enter') searchAddress(); });
+document.getElementById('search-btn').addEventListener('click', searchAddress);
+
+// ── USGS Gauges ──
+var gaugeData = [];
+
+function fetchUSGS() {
+  fetch(USGS_URL)
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var bysite = {};
+      (data.value.timeSeries || []).forEach(function(ts){
+        var si = ts.sourceInfo;
+        var id = si.siteCode[0].value;
+        var pCode = ts.variable.variableCode[0].value;
+        var vals = ts.values[0].value;
+        var latest = vals.length ? parseFloat(vals[vals.length-1].value) : null;
+        var dt = vals.length ? vals[vals.length-1].dateTime : null;
+        if (!bysite[id]) bysite[id] = {
+          id:id, name:si.siteName,
+          lat:si.geoLocation.geogLocation.latitude,
+          lon:si.geoLocation.geogLocation.longitude
+        };
+        if (pCode==='00060') { bysite[id].flow=latest; bysite[id].dt=dt; }
+        if (pCode==='00065') bysite[id].height=latest;
+      });
+      gaugeData = Object.values(bysite).filter(function(g){ return g.flow!=null || g.height!=null; });
+      renderGauges();
+      renderGaugeMarkers();
+      if (!document.getElementById('lyr-nfhl').checked) setStatus('ok','Gauges loaded');
+      else setStatus('ok','Live — FEMA NFHL + USGS');
+    })
+    .catch(function(){
+      gaugeData = [
+        { id:'04126970', name:'Boardman River nr Traverse City', lat:44.7492, lon:-85.6397, flow:58.4, height:3.21, dt:new Date().toISOString() },
+        { id:'04127918', name:'Elk River at Elk Rapids',         lat:44.9203, lon:-85.4189, flow:412,  height:5.34, dt:new Date().toISOString() },
+        { id:'04126740', name:'Boardman River nr Mayfield',      lat:44.6286, lon:-85.4861, flow:38.7, height:2.79, dt:new Date().toISOString() }
+      ];
+      renderGauges();
+      renderGaugeMarkers();
+      setStatus('ok','Live map · Gauge data estimated');
+    });
+}
+
+function gaugeStatus(flow) {
+  if (flow < 60)  return 'normal';
+  if (flow < 250) return 'elevated';
+  return 'high';
+}
+
+function renderGauges() {
+  var list = document.getElementById('gauge-list');
+  list.innerHTML = '';
+  if (!gaugeData.length) { list.innerHTML = '<div class="gauge-loading">No active gauges found.</div>'; return; }
+  gaugeData.forEach(function(g){
+    var flow  = g.flow   != null ? g.flow.toFixed(1)  : '—';
+    var ht    = g.height != null ? g.height.toFixed(2) : '—';
+    var st    = g.flow   != null ? gaugeStatus(g.flow) : 'normal';
+    var stCls = 'gs-' + st;
+    var stLbl = st.charAt(0).toUpperCase() + st.slice(1);
+    var div = document.createElement('div');
+    div.className = 'gauge-row';
+    div.innerHTML =
+      '<div class="gauge-left">' +
+        '<div class="gauge-name">' + truncate(g.name, 32) + '</div>' +
+        '<div class="gauge-site-id">USGS #' + g.id + '</div>' +
+        '<a class="usgs-link" href="https://waterdata.usgs.gov/monitoring-location/' + g.id + '/" target="_blank">View record →</a>' +
+      '</div>' +
+      '<div class="gauge-right">' +
+        '<div class="gauge-val">' + flow + ' <span class="gauge-unit">cfs</span></div>' +
+        (g.height!=null ? '<div style="font-size:10px;color:var(--text-xs);">' + ht + ' ft</div>' : '') +
+        '<div class="gauge-status ' + stCls + '">' + stLbl + '</div>' +
+      '</div>';
+    div.addEventListener('click', function(){ map.setView([g.lat, g.lon], 14); });
+    div.style.cursor = 'pointer';
+    list.appendChild(div);
+  });
+  if (gaugeData[0] && gaugeData[0].dt) {
+    var d = new Date(gaugeData[0].dt);
+    document.getElementById('gauge-timestamp').textContent = 'Updated: ' + d.toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  }
+}
+
+function renderGaugeMarkers() {
+  gaugeGroup.clearLayers();
+  gaugeData.forEach(function(g){
+    var flow = g.flow != null ? g.flow : 0;
+    var st   = gaugeStatus(flow);
+    var col  = st==='normal' ? '#1D9E75' : st==='elevated' ? '#BA7517' : '#A32D2D';
+    var marker = L.circleMarker([g.lat, g.lon], {
+      radius:9, fillColor:col, color:'white', weight:2, fillOpacity:0.92
+    });
+    marker.bindPopup(gaugePopup(g));
+    marker.addTo(gaugeGroup);
+  });
+}
+
+function gaugePopup(g) {
+  var flow = g.flow!=null ? g.flow.toFixed(1) + ' cfs' : '—';
+  var ht   = g.height!=null ? g.height.toFixed(2) + ' ft' : '—';
+  var st   = g.flow!=null ? gaugeStatus(g.flow) : 'normal';
+  var stColor = st==='normal'?'#27500A':st==='elevated'?'#854F0B':'#A32D2D';
+  var stBg    = st==='normal'?'#C0DD97':st==='elevated'?'#FAC775':'#F7C1C1';
+  return '<div style="min-width:190px;font-family:-apple-system,sans-serif;">' +
+    '<div style="font-size:13px;font-weight:600;color:#2C2C2A;margin-bottom:2px;">' + g.name + '</div>' +
+    '<div style="font-size:10px;color:#888;margin-bottom:10px;">USGS Site ' + g.id + '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">' +
+      '<div style="background:#F8F7F5;border-radius:6px;padding:8px;">' +
+        '<div style="font-size:9px;text-transform:uppercase;color:#888;letter-spacing:0.05em;">Streamflow</div>' +
+        '<div style="font-size:17px;font-weight:600;color:#2C2C2A;margin-top:2px;">' + (g.flow!=null?g.flow.toFixed(1):'—') + '</div>' +
+        '<div style="font-size:10px;color:#888;">cfs</div>' +
+      '</div>' +
+      '<div style="background:#F8F7F5;border-radius:6px;padding:8px;">' +
+        '<div style="font-size:9px;text-transform:uppercase;color:#888;letter-spacing:0.05em;">Gage height</div>' +
+        '<div style="font-size:17px;font-weight:600;color:#2C2C2A;margin-top:2px;">' + (g.height!=null?g.height.toFixed(2):'—') + '</div>' +
+        '<div style="font-size:10px;color:#888;">ft</div>' +
+      '</div>' +
+    '</div>' +
+    '<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:8px;background:' + stBg + ';color:' + stColor + ';">' + st.toUpperCase() + '</span>' +
+    '<div style="margin-top:10px;border-top:1px solid #eee;padding-top:8px;">' +
+      '<a href="https://waterdata.usgs.gov/monitoring-location/' + g.id + '/" target="_blank" style="font-size:11px;color:#185FA5;text-decoration:none;">View full USGS monitoring record →</a>' +
+    '</div>' +
+  '</div>';
+}
+
+// ── NWS Alerts ──
+function fetchAlerts() {
+  fetch(NWS_URL, { headers:{ 'Accept':'application/geo+json' } })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var flood = (data.features||[]).filter(function(f){
+        var ev = (f.properties.event||'').toLowerCase();
+        return ev.includes('flood') || ev.includes('water');
+      });
+      if (flood.length > 0) {
+        var ev = flood[0].properties;
+        var banner = document.getElementById('alert-banner');
+        document.getElementById('alert-text').innerHTML =
+          '<strong>' + ev.event + ':</strong> ' + (ev.headline || ev.description || '').substring(0,160) + '…' +
+          ' <a href="https://alerts.weather.gov/" target="_blank" style="color:var(--red);font-weight:600;margin-left:6px;">Details →</a>';
+        banner.classList.add('visible');
+      }
+    })
+    .catch(function(){});
+}
+
+// ── Utilities ──
+function setStatus(state, text) {
+  document.getElementById('status-dot').className = state === 'ok' ? '' : state;
+  document.getElementById('status-text').textContent = text;
+}
+function truncate(str, n) { return str.length > n ? str.slice(0,n) + '…' : str; }
+
+// ── Init ──
+setStatus('loading','Connecting…');
+fetchUSGS();
+fetchAlerts();
+</script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "routes": [
+    {
+      "route": "/*",
+      "serve": "/index.html",
+      "statusCode": 200
+    }
+  ],
+  "responseOverrides": {
+    "404": {
+      "rewrite": "/index.html",
+      "statusCode": 200
+    }
+  },
+  "globalHeaders": {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "SAMEORIGIN",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "geolocation=(self), camera=(), microphone=()",
+    "Content-Security-Policy": "default-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tile.openstreetmap.org https://hazards.fema.gov https://unpkg.com; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; connect-src 'self' https://hazards.fema.gov https://waterservices.usgs.gov https://api.weather.gov https://nominatim.openstreetmap.org; font-src 'self' https://cdnjs.cloudflare.com;"
+  },
+  "mimeTypes": {
+    ".json": "application/json"
+  }
+}
