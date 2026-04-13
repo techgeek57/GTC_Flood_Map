@@ -516,7 +516,7 @@ function fetchAlerts() {
         var banner = document.getElementById('alert-banner');
         document.getElementById('alert-text').innerHTML =
           '<strong>' + ev.event + ':</strong> ' + (ev.headline || ev.description || '').substring(0,160) + '…' +
-          ' <a href="https://alerts.weather.gov/" target="_blank" style="color:var(--red);font-weight:600;margin-left:6px;">Details →</a>';
+          ' <a href="https://www.weather.gov/apx/" target="_blank" style="color:var(--red);font-weight:600;margin-left:6px;">Details →</a>';
         banner.classList.add('visible');
       }
     })
